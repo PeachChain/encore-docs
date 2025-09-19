@@ -1,0 +1,164 @@
+# Encore SDK - Advertiser Integration Guide
+
+## Welcome to Encore SDK Integration
+
+The Encore SDK allows you to track conversions when users from Encore-integrated apps complete offers on your website. When users successfully complete your offers, you'll be credited for the conversion.
+
+### What You'll Need
+- **Frontend Integration**: Include our JavaScript SDK on your offer pages
+- **Completion Validation**: Verify users actually completed your offer before recording conversion
+
+### How It Works
+1. Users discover your offers in Encore-integrated apps
+2. Users click through to your website with a special tracking token
+3. Your website loads our SDK to activate the tracking session  
+4. When users complete your offer, the SDK records the conversion
+
+## Quick Start Guide
+
+### Step 1: Add SDK to Your Landing Pages
+
+Include the Encore SDK on pages where users from Encore-integrated apps will land (your offer pages, sign-up pages, etc.).
+
+#### Option A: Standard HTML Script Tag
+```html
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Your Offer Page</title>
+</head>
+<body>
+  <!-- Your page content -->
+  
+  <!-- Include Encore SDK -->
+  <script src="https://cdn.encore.com/sdk/v1/encore-sdk.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', async () => {
+      await EncoreSDK.activateSession();
+    });
+  </script>
+</body>
+</html>
+```
+
+#### Option B: Dynamic Loading in React
+```jsx
+import { useEffect } from 'react';
+
+function OfferPage() {
+  useEffect(() => {
+    // Dynamically load Encore SDK
+    const script = document.createElement('script');
+    script.src = 'https://cdn.encore.com/sdk/v1/encore-sdk.js';
+    script.async = true;
+    
+    script.onload = async () => {
+      await window.EncoreSDK.activateSession();
+    };
+    
+    document.body.appendChild(script);
+    
+    return () => {
+      document.body.removeChild(script);
+    };
+  }, []);
+
+  return (
+    <div>
+      {/* Your offer page content */}
+    </div>
+  );
+}
+```
+
+### Step 2: Add Conversion Tracking to Success Pages
+
+Add conversion tracking to your success/confirmation pages where users complete your offer.
+
+#### Option A: Standard HTML Script Tag
+```html
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Success - Thank You!</title>
+</head>
+<body>
+  <!-- Your success page content -->
+  <h1>Thank you for completing our offer!</h1>
+  
+  <!-- Include Encore SDK -->
+  <script src="https://cdn.encore.com/sdk/v1/encore-sdk.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', async () => {
+      // Verify the user actually completed your offer
+      const completionValid = await verifyOfferCompletion();
+      
+      if (!completionValid) {
+        return; // Skip tracking if offer wasn't completed
+      }
+
+      // Record the conversion
+      await EncoreSDK.recordCompletion(window.location.href);
+    });
+
+    // Replace with your actual completion validation logic
+    async function verifyOfferCompletion() {
+      // Examples:
+      // - Check if purchase order exists and is paid
+      // - Verify user account was created successfully  
+      // - Confirm subscription is active
+      // - Check that required form was submitted
+      
+      return true; // Replace with your validation
+    }
+  </script>
+</body>
+</html>
+```
+
+#### Option B: Dynamic Loading in React
+```jsx
+import { useEffect } from 'react';
+
+function SuccessPage() {
+  useEffect(() => {
+    const script = document.createElement('script');
+    script.src = 'https://cdn.encore.com/sdk/v1/encore-sdk.js';
+    script.async = true;
+    
+    script.onload = async () => {
+      // Verify completion
+      const completionValid = await verifyOfferCompletion();
+      
+      if (!completionValid) return;
+
+      // Record conversion
+      await window.EncoreSDK.recordCompletion(window.location.href);
+    };
+    
+    document.body.appendChild(script);
+    
+    return () => {
+      document.body.removeChild(script);
+    };
+  }, []);
+
+  // Replace with your actual completion validation
+  async function verifyOfferCompletion() {
+    // Your validation logic here
+    return true;
+  }
+
+  return (
+    <div>
+      <h1>Thank you for completing our offer!</h1>
+      {/* Your success page content */}
+    </div>
+  );
+}
+```
+
+## Important Notes
+
+- **Completion Validation**: Always verify users actually completed your offer before calling `recordCompletion()`
+- **Token Detection**: The SDK automatically detects Encore users via URL parameters - no additional configuration needed
