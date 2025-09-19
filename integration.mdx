@@ -31,7 +31,7 @@ Include the Encore SDK on pages where users from Encore-integrated apps will lan
   <!-- Your page content -->
   
   <!-- Include Encore SDK -->
-  <script src="https://cdn.encore.com/sdk/v1/encore-sdk.js"></script>
+  <script src="https://encore.joinyaw.com/encore-advertiser-sdk.js"></script>
   <script>
     document.addEventListener('DOMContentLoaded', async () => {
       await EncoreSDK.activateSession();
@@ -49,7 +49,7 @@ function OfferPage() {
   useEffect(() => {
     // Dynamically load Encore SDK
     const script = document.createElement('script');
-    script.src = 'https://cdn.encore.com/sdk/v1/encore-sdk.js';
+    script.src = 'https://encore.joinyaw.com/encore-advertiser-sdk.js';
     script.async = true;
     
     script.onload = async () => {
@@ -87,7 +87,7 @@ Add conversion tracking to your success/confirmation pages where users complete 
   <h1>Thank you for completing our offer!</h1>
   
   <!-- Include Encore SDK -->
-  <script src="https://cdn.encore.com/sdk/v1/encore-sdk.js"></script>
+  <script src="https://encore.joinyaw.com/encore-advertiser-sdk.js"></script>
   <script>
     document.addEventListener('DOMContentLoaded', async () => {
       // Verify the user actually completed your offer
@@ -123,7 +123,7 @@ import { useEffect } from 'react';
 function SuccessPage() {
   useEffect(() => {
     const script = document.createElement('script');
-    script.src = 'https://cdn.encore.com/sdk/v1/encore-sdk.js';
+    script.src = 'https://encore.joinyaw.com/encore-advertiser-sdk.js';
     script.async = true;
     
     script.onload = async () => {
