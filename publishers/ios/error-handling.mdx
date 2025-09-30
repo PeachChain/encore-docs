@@ -1,0 +1,191 @@
+---
+title: "Error Handling"
+---
+Identifying users and managing their identity in your iOS app
+
+---
+
+## Overview
+
+Encore requires user identification to track entitlements and prevent abuse across devices. Proper user management ensures that promotional access is correctly attributed and synchronized.
+
+---
+
+## Anonymous Users
+
+Encore does **not** automatically generate user IDs. You must call `identify(userId:)` before checking entitlements or presenting offers.
+
+---
+
+## Identified Users
+
+When you have a user's identity (e.g., after login or account creation), call `identify(userId:)` to enable entitlement tracking:
+
+```swift
+// After retrieving a user's ID from login or account creation
+Encore.shared.identify(userId: user.id)
+```
+
+This tells Encore who the current user is and enables:
+- Fetching their current entitlements from the server
+- Tracking promotional access across devices
+- Preventing abuse through device fingerprinting
+
+### Resetting User Identity
+
+When a user logs out or you want to anonymize them, call `reset()`:
+
+```swift
+// When the user signs out
+Encore.shared.reset()
+```
+
+This clears:
+- The stored user ID
+- Cached entitlement data
+- All provisional grants
+
+---
+
+## Best Practices for User IDs
+
+### ✅ Do
+
+- Use a **stable, unique identifier** per user (e.g., database ID, UUID)
+- **Persist** the user ID across app sessions
+- Call `identify()` **after authentication** but **before** checking entitlements
+
+### ❌ Don't
+
+- Use **guessable IDs** – they should be random and unpredictable
+- Use **emails** as user IDs – this isn't GDPR compliant
+- Use **IDFA or device IDs** – these are device-specific and can be rotated
+- **Hardcode** strings as user IDs – every user will be treated as the same user
+- Use **sensitive personal information** in user IDs
+
+---
+
+## Implementation Examples
+
+### SwiftUI with Authentication
+
+```swift
+import SwiftUI
+import Encore
+
+@main
+struct YourApp: App {
+    @StateObject private var authManager = AuthManager()
+
+    init() {
+        Encore.shared.configure(apiKey: "pk_your_api_key")
+    }
+
+    var body: some Scene {
+        WindowGroup {
+            if authManager.isAuthenticated {
+                MainAppView()
+                    .onAppear {
+                        // Identify user when authenticated
+                        Encore.shared.identify(userId: authManager.userId)
+                    }
+            } else {
+                LoginView()
+            }
+        }
+    }
+}
+```
+
+### UIKit with Login Flow
+
+```swift
+class LoginViewController: UIViewController {
+    
+    func handleSuccessfulLogin(user: User) {
+        // After successful authentication, identify the user
+        Encore.shared.identify(userId: user.id)
+        
+        // Now safe to check entitlements or present offers
+        navigateToMainApp()
+    }
+    
+    func handleLogout() {
+        // Clear user identity
+        Encore.shared.reset()
+        
+        // Navigate to login
+        navigateToLogin()
+    }
+}
+```
+
+### Persisting User IDs
+
+Store your user ID securely so it persists across app launches:
+
+```swift
+class UserManager {
+    private let userIdKey = "com.yourapp.userId"
+    
+    func saveUserId(_ userId: String) {
+        UserDefaults.standard.set(userId, forKey: userIdKey)
+        Encore.shared.identify(userId: userId)
+    }
+    
+    func loadUserId() -> String? {
+        return UserDefaults.standard.string(forKey: userIdKey)
+    }
+    
+    func logout() {
+        UserDefaults.standard.removeObject(forKey: userIdKey)
+        Encore.shared.reset()
+    }
+}
+```
+
+---
+
+## When to Call identify()
+
+| Scenario | Action |
+|----------|--------|
+| **App Launch** (user already logged in) | Call `identify()` in your app's initialization |
+| **After Login** | Call `identify()` immediately after successful authentication |
+| **After Signup** | Call `identify()` immediately after account creation |
+| **Before Checking Entitlements** | Always ensure `identify()` was called first |
+| **Before Presenting Offers** | Always ensure `identify()` was called first |
+
+---
+
+## When to Call reset()
+
+| Scenario | Action |
+|----------|--------|
+| **User Logout** | Call `reset()` to clear user data |
+| **Account Switching** | Call `reset()`, then `identify()` with new user ID |
+| **Testing** | Call `reset()` to clear test data between sessions |
+
+---
+
+## Verification
+
+After calling `identify()`, you should see this in your console:
+
+```
+🔧 [CHATAPP] Identified user with Encore: user_abc123
+🔄 [ENTITLEMENTS] REFRESH UserId changed from 'nil' to 'user_abc123' - refreshing
+```
+
+If you see these messages, user identification is working correctly! ✅
+
+---
+
+## Next Steps
+
+Now that users are identified, you're ready to:
+
+- [Check Entitlements](./checking-entitlements) - Learn how to check user entitlements
+- [Present Offers](./presenting-offers) - Show promotional offers to your users
+
+For further help, check out our [example apps](../EncoreSwiftUIDemo) for working implementations of user management.

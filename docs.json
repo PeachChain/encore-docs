@@ -31,7 +31,13 @@
               {
                 "group": "iOS SDK",
                 "pages": [
-                  "quickstart"
+                  "publishers/ios/install",
+                  "publishers/ios/configure",
+                  "publishers/ios/user-management",
+                  "publishers/ios/present-offers",
+                  "publishers/ios/track-entitlements",
+                  "publishers/ios/user-attributes",
+                  "publishers/ios/error-handling"
                 ]
               }
             ]

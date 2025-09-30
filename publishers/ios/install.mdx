@@ -1,0 +1,107 @@
+---
+title: "Install the SDK"
+---
+
+## Overview
+
+To see the latest release, check out the [repository](https://github.com/your-org/encore-swift-sdk).
+
+You can install via **Swift Package Manager** (recommended) or **CocoaPods**.
+
+---
+
+## Install via Swift Package Manager
+
+Swift Package Manager is a tool for automating the distribution of Swift code and is integrated into the Swift compiler.
+
+### Step 1: Add Package in Xcode
+
+In **Xcode**, select **File ▸ Add Packages...**
+
+Then, paste the GitHub repository URL:
+
+```
+https://github.com/PeachChain/encore-swift-sdk
+```
+
+in the search bar.
+
+### Step 2: Configure Dependency
+
+With the **encore-swift-sdk** package selected, set the **Dependency Rule** to **Up to Next Major Version** with the lower bound set to **0.1.0**.
+
+Make sure your project name is selected in **Add to Project**. Then click **Add Package**.
+
+### Step 3: Add to Target
+
+After the package has loaded, make sure **Add to Target** is set to your app's name and click **Add Package**.
+
+### Import Encore
+
+You should now be able to import the SDK:
+
+```swift
+import Encore
+```
+
+**And you're done!** Now you're ready to [configure the SDK](./configure) 👉
+
+---
+
+## Install via CocoaPods
+
+### Step 1: Add to Podfile
+
+First, add the following to your `Podfile`:
+
+```ruby
+pod 'Encore', '~> 0.1.0'
+```
+
+### Step 2: Update Spec Repo
+
+Next, run `pod repo update` to update your local spec repo.
+
+### Step 3: Install
+
+Finally, run `pod install` from your terminal.
+
+Note: In your target's **Build Settings → User Script Sandboxing**, this value should be set to **No**.
+
+### Import Encore
+
+You should now be able to import the SDK:
+
+```swift
+import Encore
+```
+
+**And you're done!** Now you're ready to [configure the SDK](./configure) 👉
+
+---
+
+## Updating to a New Release
+
+### Swift Package Manager
+
+To update to the latest version:
+
+1. In Xcode, select your project in the navigator
+2. Select the **Package Dependencies** tab
+3. Find **encore-swift-sdk** in the list
+4. Click the refresh button or right-click and select **Update Package**
+
+### CocoaPods
+
+To update to a new release:
+
+1. Update the version specified in your `Podfile`
+2. Run `pod install` again from your terminal
+
+---
+
+## Next Steps
+
+- [Configure the SDK](./configure) - Set up your API key and initialize the SDK
+- [Identify Users](./user-management) - Learn how to identify users for entitlement tracking
+- [Check Entitlements](./checking-entitlements) - Start checking user entitlements in your app

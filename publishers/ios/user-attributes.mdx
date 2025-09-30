@@ -1,0 +1,459 @@
+---
+title: "Setting User Attributes"
+---
+
+Personalize offers and enable advanced targeting by setting user attributes.
+
+## Overview
+
+User attributes allow you to:
+- **Personalize offers** based on user data (name, subscription tier, usage, etc.)
+- **Target audiences** with specific offers in the Encore dashboard
+- **Track conversion context** for analytics and optimization
+
+---
+
+## Setting Attributes
+
+### Basic Usage
+
+Set attributes using a simple dictionary of string key-value pairs:
+
+```swift
+import EncoreSDK
+
+Encore.shared.setUserAttributes([
+    "email": "user@example.com",
+    "subscriptionTier": "premium",
+    "monthsSubscribed": "6"
+])
+```
+
+**Important:** `setUserAttributes()` **merges** with existing attributes - it does not replace them.
+
+```swift
+// First call
+Encore.shared.setUserAttributes(["email": "user@example.com", "tier": "premium"])
+
+// Second call
+Encore.shared.setUserAttributes(["tier": "free", "cancelReason": "too_expensive"])
+
+// Result: All three attributes are stored
+// {
+//   "email": "user@example.com",
+//   "tier": "free",              // Updated
+//   "cancelReason": "too_expensive"  // Added
+// }
+```
+
+---
+
+## Combining with User Identification
+
+You can set attributes when identifying a user:
+
+```swift
+// Identify user and set attributes in one call
+Encore.shared.identify(
+    userId: "user_12345",
+    attributes: [
+        "email": "user@example.com",
+        "subscriptionTier": "premium"
+    ]
+)
+
+// Or identify first, then set attributes
+Encore.shared.identify(userId: "user_12345")
+Encore.shared.setUserAttributes(["email": "user@example.com"])
+```
+
+---
+
+## Using EncoreAttributes Struct
+
+For type-safe attribute building, use the `EncoreAttributes` struct:
+
+```swift
+import EncoreSDK
+
+// Build structured attributes
+let userAttrs = EncoreAttributes(
+    userId: "user_12345",
+    email: "user@example.com",
+    firstName: "Jane",
+    lastName: "Doe",
+    subscriptionTier: "premium",
+    monthsSubscribed: "6",
+    custom: [
+        "cancelReason": "too_expensive",
+        "usageLevel": "power_user"
+    ]
+)
+
+// Convert to dictionary and set
+Encore.shared.setUserAttributes(userAttrs.toDictionary())
+```
+
+### Available Built-in Fields
+
+The `EncoreAttributes` struct provides these predefined fields:
+
+**Identity:**
+- `userId` (required)
+- `email`
+- `firstName`
+- `lastName`
+
+**Contact Information:**
+- `mobile`
+- `phoneNumber`
+
+**Location:**
+- `postcode` / `postalCode`
+- `city`
+- `state`
+- `country`
+
+**Demographics:**
+- `dateOfBirth`
+- `gender`
+- `language`
+
+**Subscription & Billing:**
+- `subscriptionTier`
+- `monthsSubscribed`
+- `billingCycle`
+- `lastPaymentAmount`
+
+**Engagement:**
+- `lastActiveDate`
+- `totalSessions`
+
+**Custom:**
+- `custom: [String: String]` - For any additional attributes
+
+---
+
+## Common Use Cases
+
+### Cancellation Flow Context
+
+Provide context about why a user is canceling:
+
+```swift
+@IBAction func cancelButtonTapped() {
+    // Set cancellation context
+    Encore.shared.setUserAttributes([
+        "cancelReason": selectedReason, // e.g., "too_expensive"
+        "cancelFlow": "settings_screen",
+        "monthsSubscribed": "\(user.subscriptionMonths)"
+    ])
+    
+    // Then present offer with this context
+    Encore.placement()
+        .onCreditApplied { amount in
+            // Offer accepted
+        }
+        .show()
+}
+```
+
+### Feature Paywall Context
+
+Set context when user hits a premium feature:
+
+```swift
+func showPremiumFeature() {
+    Encore.shared.setUserAttributes([
+        "featureRequested": "advanced_analytics",
+        "usageLevel": "\(userStats.sessionCount)",
+        "daysSinceInstall": "\(daysSinceInstall)"
+    ])
+    
+    // Present offer
+    Encore.placement()
+        .onCreditApplied { amount in
+            unlockFeature()
+        }
+        .show()
+}
+```
+
+### User Profile Data
+
+Sync user profile data for personalization:
+
+```swift
+func updateUserProfile() {
+    guard let user = currentUser else { return }
+    
+    Encore.shared.setUserAttributes([
+        "email": user.email,
+        "subscriptionTier": user.tier.rawValue,
+        "monthsSubscribed": "\(user.monthsSubscribed)",
+        "totalSessions": "\(analytics.sessionCount)",
+        "lastActiveDate": ISO8601DateFormatter().string(from: Date())
+    ])
+}
+```
+
+### A/B Testing Context
+
+Pass experiment variants as attributes:
+
+```swift
+Encore.shared.setUserAttributes([
+    "experimentGroup": experimentManager.currentVariant,
+    "featureFlag_newUI": "\(featureFlags.newUIEnabled)"
+])
+```
+
+---
+
+## Clearing Attributes
+
+### Clear All Attributes
+
+Call `reset()` to clear user ID and all attributes:
+
+```swift
+Encore.shared.reset()
+// Generates new anonymous user ID
+// Clears all attributes
+// Clears cached entitlements
+```
+
+### Update Individual Attributes
+
+Since attributes merge, just set new values:
+
+```swift
+// Change tier from "premium" to "free"
+Encore.shared.setUserAttributes(["subscriptionTier": "free"])
+```
+
+---
+
+## Best Practices
+
+### ✅ DO
+
+```swift
+// ✅ Set attributes before presenting offers
+Encore.shared.setUserAttributes(["cancelReason": "too_expensive"])
+Encore.placement().show()
+
+// ✅ Use descriptive, consistent keys
+Encore.shared.setUserAttributes([
+    "subscriptionTier": "premium",  // Not "tier" or "plan"
+    "cancelReason": "too_expensive" // Not "reason" or "cancel_type"
+])
+
+// ✅ Use string values for everything
+Encore.shared.setUserAttributes([
+    "monthsSubscribed": "\(user.months)", // Convert to string
+    "isActive": "\(user.isActive)"       // Convert bool to string
+])
+
+// ✅ Set attributes on user state changes
+func onUserLogin() {
+    Encore.shared.identify(userId: user.id)
+    Encore.shared.setUserAttributes([
+        "email": user.email,
+        "tier": user.subscriptionTier
+    ])
+}
+```
+
+### ❌ DON'T
+
+```swift
+// ❌ Don't assume attributes persist forever
+// Call setUserAttributes on each session/state change
+
+// ❌ Don't use inconsistent naming
+Encore.shared.setUserAttributes(["tier": "premium"])
+// Later...
+Encore.shared.setUserAttributes(["subscription_tier": "free"]) // Different key!
+
+// ❌ Don't set attributes after presenting offer
+Encore.placement().show()
+Encore.shared.setUserAttributes([...]) // Too late!
+
+// ❌ Don't store sensitive data
+Encore.shared.setUserAttributes([
+    "password": user.password,        // Never!
+    "creditCardNumber": user.ccNumber // Never!
+])
+```
+
+---
+
+## Persistence
+
+### Automatic Persistence
+
+Attributes are automatically persisted to device storage and survive:
+- ✅ App restarts
+- ✅ Background/foreground transitions
+- ✅ User sessions
+
+### When Attributes Are Cleared
+
+Attributes are cleared only when:
+- You call `Encore.shared.reset()`
+- User uninstalls the app
+
+---
+
+## Targeting in Dashboard
+
+Once attributes are set in your app, you can use them in the Encore dashboard to:
+
+1. **Create Audiences** - Target specific user segments
+   - Example: Show higher discounts to users with `cancelReason: "too_expensive"`
+   
+2. **Personalize Offers** - Display dynamic content
+   - Example: "Hi \(firstName), here's a special offer for \(subscriptionTier) users"
+
+3. **Run A/B Tests** - Test different offers per segment
+   - Example: Test 20% vs 30% discount for `monthsSubscribed > 6`
+
+---
+
+## SwiftUI Integration
+
+### Set Attributes on View Appear
+
+```swift
+struct CancellationView: View {
+    @State private var selectedReason = "too_expensive"
+    
+    var body: some View {
+        VStack {
+            Picker("Reason", selection: $selectedReason) {
+                Text("Too Expensive").tag("too_expensive")
+                Text("Not Using").tag("not_using")
+                Text("Found Alternative").tag("found_alternative")
+            }
+            
+            Button("Continue Cancellation") {
+                // Attributes will be available for offer targeting
+                showEncoreOffer = true
+            }
+        }
+        .onChange(of: selectedReason) { newReason in
+            // Update attributes as user makes selections
+            Encore.shared.setUserAttributes([
+                "cancelReason": newReason
+            ])
+        }
+    }
+}
+```
+
+### Combine with State Management
+
+```swift
+@Observable
+class UserSession {
+    var user: User?
+    
+    func login(user: User) {
+        self.user = user
+        
+        // Identify and set attributes
+        Encore.shared.identify(
+            userId: user.id,
+            attributes: [
+                "email": user.email,
+                "subscriptionTier": user.tier,
+                "monthsSubscribed": "\(user.monthsSubscribed)"
+            ]
+        )
+    }
+    
+    func logout() {
+        self.user = nil
+        
+        // Reset to new anonymous user
+        Encore.shared.reset()
+    }
+}
+```
+
+---
+
+## Example: Complete Cancellation Flow
+
+Putting it all together:
+
+```swift
+struct CancellationFlowView: View {
+    @State private var selectedReason = ""
+    @State private var showEncoreOffer = false
+    
+    var body: some View {
+        VStack(spacing: 20) {
+            Text("We're sad to see you go")
+                .font(.title)
+            
+            Text("Help us understand why:")
+            
+            VStack(alignment: .leading) {
+                ReasonButton("Too expensive", reason: "too_expensive")
+                ReasonButton("Not using enough", reason: "not_using")
+                ReasonButton("Found alternative", reason: "found_alternative")
+                ReasonButton("Missing features", reason: "missing_features")
+            }
+            
+            if !selectedReason.isEmpty {
+                Button("Continue Cancellation") {
+                    handleCancellation()
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .encoreSheet(isPresented: $showEncoreOffer) { creditAmount in
+            // User accepted offer - don't cancel
+            print("User received \(creditAmount) credit")
+            navigateToAccount()
+        } onDecline: { _ in
+            // User declined - proceed with cancellation
+            completeCancellation()
+        }
+    }
+    
+    func ReasonButton(_ title: String, reason: String) -> some View {
+        Button(title) {
+            selectedReason = reason
+            
+            // Set attributes immediately
+            Encore.shared.setUserAttributes([
+                "cancelReason": reason,
+                "cancelFlow": "in_app_settings"
+            ])
+        }
+    }
+    
+    func handleCancellation() {
+        // Final attributes before showing offer
+        Encore.shared.setUserAttributes([
+            "cancelReason": selectedReason,
+            "cancelTimestamp": ISO8601DateFormatter().string(from: Date())
+        ])
+        
+        // Present retention offer
+        showEncoreOffer = true
+    }
+}
+```
+
+---
+
+## Next Steps
+
+- [Presenting Offers](./presenting-offers.mdx) - Use attributes for targeted offers
+- [Tracking Entitlements](./tracking-entitlements.mdx) - Monitor entitlement state
+- [User Management](./user-management.mdx) - Identify and manage users
+
