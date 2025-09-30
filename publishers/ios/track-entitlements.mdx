@@ -1,0 +1,410 @@
+---
+title: "Tracking Entitlements"
+---
+Monitor user entitlements in real-time to unlock features and adapt your UI.
+
+## Overview
+
+Encore tracks entitlements automatically, including free trials, discounts, and credits. You can check entitlement status anywhere in your app to gate features or adapt your UI.
+
+---
+
+## Entitlement Types
+
+Encore supports three types of entitlements:
+
+- **`.freeTrial`** - Time-limited free access to premium features
+- **`.discount`** - Percentage or dollar-based discounts on subscriptions
+- **`.credit`** - Account credits that can be applied to purchases
+
+---
+
+## Entitlement Scopes
+
+When checking entitlements, you can specify which scope to use:
+
+### `.verified` (Default - Recommended)
+
+Only counts entitlements that have been verified (user completed the conversion action):
+
+```swift
+let hasTrial = Encore.shared.isActive(.freeTrial, in: .verified)
+// Returns true only if user completed the conversion
+```
+
+**Use `.verified` when:**
+- Gating critical features
+- Determining billing/payment logic
+- Showing "Pro" badges or status
+
+### `.all`
+
+Counts both verified AND provisional (unverified) entitlements:
+
+```swift
+let hasTrial = Encore.shared.isActive(.freeTrial, in: .all)
+// Returns true even if user hasn't converted yet
+```
+
+**Use `.all` when:**
+- Providing temporary trial access before conversion
+- Showing "Limited time offer" UI
+- Optimistic feature unlocking for better UX
+
+---
+
+## Checking Entitlement Status
+
+### Simple Boolean Check
+
+The easiest way to check if a user has an active entitlement:
+
+```swift
+import EncoreSDK
+
+// Check for active free trial (verified only)
+let hasVerifiedTrial = Encore.shared.isActive(.freeTrial, in: .verified)
+
+// Check for any trial (verified or provisional)
+let hasAnyTrial = Encore.shared.isActive(.freeTrial, in: .all)
+
+// Check for active discount
+let hasDiscount = Encore.shared.isActive(.discount, in: .verified)
+
+// Check for available credits
+let hasCredit = Encore.shared.isActive(.credit, in: .verified)
+```
+
+### SwiftUI Integration
+
+Use `@State` and `onReceive` to reactively update your UI:
+
+```swift
+import SwiftUI
+import EncoreSDK
+
+struct PremiumFeatureView: View {
+    @State private var hasFreeTrial = false
+    
+    var body: some View {
+        VStack {
+            if hasFreeTrial {
+                // Show premium content
+                PremiumContent()
+                    .overlay(alignment: .topTrailing) {
+                        Text("FREE TRIAL")
+                            .font(.caption)
+                            .padding(4)
+                            .background(.green)
+                            .foregroundColor(.white)
+                            .cornerRadius(4)
+                    }
+            } else {
+                // Show locked state
+                LockedFeatureView()
+            }
+        }
+        .onAppear {
+            // Initial check
+            hasFreeTrial = Encore.shared.isActive(.freeTrial, in: .verified)
+        }
+        .onReceive(
+            Encore.shared.isActivePublisher(for: .freeTrial, in: .verified)
+        ) { isActive in
+            // Real-time updates when entitlement changes
+            hasFreeTrial = isActive
+        }
+    }
+}
+```
+
+---
+
+## Using Combine Publishers
+
+For reactive apps, subscribe to entitlement changes:
+
+```swift
+import Combine
+import EncoreSDK
+
+class FeatureManager: ObservableObject {
+    @Published var isPremiumUnlocked = false
+    private var cancellables = Set<AnyCancellable>()
+    
+    init() {
+        // Subscribe to free trial changes
+        Encore.shared.isActivePublisher(for: .freeTrial, in: .verified)
+            .assign(to: \.isPremiumUnlocked, on: self)
+            .store(in: &cancellables)
+    }
+}
+
+// Usage in SwiftUI
+struct ContentView: View {
+    @StateObject private var features = FeatureManager()
+    
+    var body: some View {
+        if features.isPremiumUnlocked {
+            PremiumView()
+        } else {
+            FreeView()
+        }
+    }
+}
+```
+
+---
+
+## Using Delegate Pattern
+
+For UIKit apps or non-Combine architectures:
+
+```swift
+import EncoreSDK
+
+class SubscriptionManager: EncoreDelegate {
+    var hasPremiumAccess = false
+    
+    init() {
+        // Set delegate
+        Encore.shared.entitlementsDelegate = self
+        
+        // Initial check
+        hasPremiumAccess = Encore.shared.isActive(.freeTrial, in: .verified)
+    }
+    
+    // Delegate method called when entitlements change
+    func encoreDidChangeEntitlement(
+        _ isActive: Bool,
+        for type: EntitlementType,
+        in scope: EntitlementScope
+    ) {
+        if type == .freeTrial && scope == .verified {
+            hasPremiumAccess = isActive
+            
+            // Update UI or notify observers
+            NotificationCenter.default.post(
+                name: .premiumAccessChanged,
+                object: nil,
+                userInfo: ["hasAccess": isActive]
+            )
+        }
+    }
+}
+```
+
+---
+
+## Common Patterns
+
+### Feature Gating
+
+Lock features behind entitlement checks:
+
+```swift
+struct AdvancedAnalyticsView: View {
+    @State private var hasAccess = false
+    
+    var body: some View {
+        Group {
+            if hasAccess {
+                // Show premium feature
+                AdvancedCharts()
+            } else {
+                // Show paywall or locked state
+                VStack {
+                    Image(systemName: "lock.fill")
+                    Text("Premium Feature")
+                    Button("Unlock") {
+                        // Present paywall or offer
+                    }
+                }
+            }
+        }
+        .onAppear {
+            hasAccess = Encore.shared.isActive(.freeTrial, in: .verified)
+        }
+        .onReceive(
+            Encore.shared.isActivePublisher(for: .freeTrial, in: .verified)
+        ) { isActive in
+            hasAccess = isActive
+        }
+    }
+}
+```
+
+### UI Badge/Label
+
+Show entitlement status in UI:
+
+```swift
+struct ProfileView: View {
+    @State private var userStatus: String = "Free"
+    
+    var body: some View {
+        VStack {
+            Text("Account Status: \(userStatus)")
+                .font(.headline)
+        }
+        .onAppear {
+            updateStatus()
+        }
+        .onReceive(
+            Encore.shared.isActivePublisher(for: .freeTrial, in: .verified)
+        ) { _ in
+            updateStatus()
+        }
+    }
+    
+    private func updateStatus() {
+        if Encore.shared.isActive(.freeTrial, in: .verified) {
+            userStatus = "Free Trial 🎉"
+        } else if Encore.shared.isActive(.discount, in: .verified) {
+            userStatus = "Discounted Plan"
+        } else {
+            userStatus = "Free"
+        }
+    }
+}
+```
+
+### Provisional vs Verified Logic
+
+Handle both provisional and verified entitlements differently:
+
+```swift
+struct TrialBanner: View {
+    @State private var hasProvisionalTrial = false
+    @State private var hasVerifiedTrial = false
+    
+    var body: some View {
+        VStack {
+            if hasVerifiedTrial {
+                Text("Trial Active ✓")
+                    .foregroundColor(.green)
+            } else if hasProvisionalTrial {
+                Text("Complete signup to activate trial")
+                    .foregroundColor(.orange)
+                Button("Complete Signup") {
+                    // Navigate to signup flow
+                }
+            }
+        }
+        .onAppear {
+            checkTrialStatus()
+        }
+        .onReceive(
+            Encore.shared.isActivePublisher(for: .freeTrial, in: .all)
+        ) { _ in
+            checkTrialStatus()
+        }
+    }
+    
+    private func checkTrialStatus() {
+        hasVerifiedTrial = Encore.shared.isActive(.freeTrial, in: .verified)
+        hasProvisionalTrial = Encore.shared.isActive(.freeTrial, in: .all) && !hasVerifiedTrial
+    }
+}
+```
+
+---
+
+## Multiple Entitlements
+
+Check all entitlement types at once:
+
+```swift
+class EntitlementChecker {
+    var activeEntitlements: [EntitlementType] {
+        var active: [EntitlementType] = []
+        
+        if Encore.shared.isActive(.freeTrial, in: .verified) {
+            active.append(.freeTrial)
+        }
+        if Encore.shared.isActive(.discount, in: .verified) {
+            active.append(.discount)
+        }
+        if Encore.shared.isActive(.credit, in: .verified) {
+            active.append(.credit)
+        }
+        
+        return active
+    }
+    
+    var hasAnyEntitlement: Bool {
+        return !activeEntitlements.isEmpty
+    }
+}
+```
+
+---
+
+## Best Practices
+
+### ✅ DO
+
+```swift
+// ✅ Use .verified for feature gating
+if Encore.shared.isActive(.freeTrial, in: .verified) {
+    unlockPremiumFeature()
+}
+
+// ✅ Subscribe to changes for reactive UI
+.onReceive(Encore.shared.isActivePublisher(for: .freeTrial, in: .verified)) { isActive in
+    self.isPremium = isActive
+}
+
+// ✅ Check on appear for initial state
+.onAppear {
+    hasAccess = Encore.shared.isActive(.freeTrial, in: .verified)
+}
+```
+
+### ❌ DON'T
+
+```swift
+// ❌ Don't use .all for billing/payment logic
+if Encore.shared.isActive(.freeTrial, in: .all) {
+    chargeUser() // Could charge before conversion!
+}
+
+// ❌ Don't forget to check on appear
+.onReceive(publisher) { isActive in
+    // Without onAppear, initial value is missed
+}
+
+// ❌ Don't cache status without updates
+let hasAccess = Encore.shared.isActive(.freeTrial, in: .verified)
+// This value becomes stale - use publisher instead
+```
+
+---
+
+## Debugging
+
+Check current user ID and entitlement status:
+
+```swift
+// Get current user ID
+if let userId = Encore.shared.currentUserId {
+    print("Current user: \(userId)")
+}
+
+// Check all entitlements
+let hasFreeTrial = Encore.shared.isActive(.freeTrial, in: .verified)
+let hasDiscount = Encore.shared.isActive(.discount, in: .verified)
+let hasCredit = Encore.shared.isActive(.credit, in: .verified)
+
+print("Free Trial: \(hasFreeTrial)")
+print("Discount: \(hasDiscount)")
+print("Credit: \(hasCredit)")
+```
+
+---
+
+## Next Steps
+
+- [Presenting Offers](./presenting-offers.mdx) - Show retention offers to users
+- [Setting User Attributes](./setting-user-attributes.mdx) - Personalize entitlements
+- [User Management](./user-management.mdx) - Identify users and manage sessions

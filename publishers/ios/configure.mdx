@@ -1,0 +1,98 @@
+---
+title: "Configure the SDK"
+---
+
+As soon as your app launches, you need to configure the SDK with your **API Key**. You'll retrieve this from the Encore Dashboard.
+
+---
+
+## Sign Up & Grab Your API Key
+
+If you haven't already, sign up for a free account on [Encore](https://encore.dev). Then, when you're through to the Dashboard, click **Settings** from the panel on the left, click **API Keys** and copy your **Public API Key**.
+
+---
+
+## Initialize Encore in Your App
+
+Begin by editing your main application entry point. Depending on your app architecture, this could be your `AppDelegate.swift` for UIKit apps or your main `App` struct for SwiftUI apps.
+
+### SwiftUI
+
+```swift
+import SwiftUI
+import Encore
+
+@main
+struct YourApp: App {
+    init() {
+        // Configure Encore with your API key
+        Encore.shared.configure(apiKey: "pk_your_api_key_here")
+    }
+
+    var body: some Scene {
+        WindowGroup {
+            ContentView()
+        }
+    }
+}
+```
+
+### UIKit
+
+```swift
+// AppDelegate.swift
+
+import UIKit
+import Encore
+
+@main
+final class AppDelegate: UIResponder, UIApplicationDelegate {
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
+    ) -> Bool {
+        // Configure Encore with your API key
+        Encore.shared.configure(apiKey: "pk_your_api_key_here")
+        return true
+    }
+}
+```
+
+This configures a shared instance of `Encore`, the primary class for interacting with the SDK's API. Make sure to replace `pk_your_api_key_here` with your public API key that you just retrieved.
+
+---
+
+## What Happens During Configuration
+
+When you call `configure()`, the SDK:
+
+1. **Initializes the API client** - Sets up secure communication with Encore servers
+2. **Creates the Signal Manager** - Ensures reliable delivery of grant signals
+3. **Sets up Entitlement Manager** - Prepares the hybrid entitlement system
+4. **Loads cached data** - Restores any previously saved entitlement state
+
+---
+
+## Verify Configuration
+
+After configuration, you should see log messages in your console:
+
+```
+🔧 [Encore] Environment: production
+✅ [Encore] SignalManager initialized for reliable grant signal delivery
+✅ [Encore] EntitlementManager initialized for hybrid entitlement tracking
+```
+
+If you see these messages, you've successfully configured Encore! 🎉
+
+---
+
+## Next Steps
+
+Now that Encore is configured, you're ready to:
+
+- [Identify Users](./user-management) - Learn how to identify users for entitlement tracking
+- [Check Entitlements](./checking-entitlements) - Start checking user entitlements in your app
+- [Present Offers](./presenting-offers) - Show promotional offers to your users
+
+For further help, check out our [example apps](../EncoreSwiftUIDemo) for working examples of implementing the Encore SDK.
