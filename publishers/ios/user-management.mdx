@@ -1,14 +1,13 @@
 ---
 title: "User Management"
 ---
-
-Identifying users and managing their identity in your iOS app
+Identifying users, setting attributes, and managing identity in your iOS app.
 
 ---
 
 ## Overview
 
-Encore requires user identification to track entitlements and prevent abuse across devices. Proper user management ensures that promotional access is correctly attributed and synchronized.
+Encore requires user identification to track entitlements and prevent abuse across devices. You can also set user attributes to enable targeted offers and personalization.
 
 ---
 
@@ -24,20 +23,22 @@ You can call `Encore.shared.reset()` to reset this ID and clear any entitlement 
 
 ## Identified Users
 
-If you use your own user management system, call `identify(userId:)` when you have a user's identity. This will alias your `userId` with the anonymous Encore ID, enabling the SDK to:
-
-- Associate promotional access with your user account
-- Sync entitlements across devices when the user logs in
-- Track conversion attribution accurately
+If you use your own user management system, call `identify(userId:)` when you have a user's identity:
 
 ```swift
 // After retrieving a user's ID from login or account creation
 Encore.shared.identify(userId: user.id)
 ```
 
-Calling `identify()` replaces the anonymous ID with your user's actual ID, allowing for proper cross-device entitlement management.
+This enables the SDK to:
+- Associate promotional access with your user account
+- Sync entitlements across devices when the user logs in
+- Track conversion attribution accurately
 
-### Resetting User Identity
+
+---
+
+## Resetting User Identity
 
 When a user logs out, call `reset()`:
 
@@ -49,30 +50,78 @@ Encore.shared.reset()
 This will:
 - Reset the user ID to a new auto-generated anonymous ID
 - Clear cached entitlement data
-- Clear paywall/offer assignments
+- Clear all user attributes
 
 ---
 
-## Best Practices for User IDs
+## Setting User Attributes
 
-### ✅ Do
+User attributes enable:
+- **Personalized offers** based on user data (subscription tier, usage, etc.)
+- **Audience targeting** with specific offers in the Encore dashboard
+- **Conversion context tracking** for analytics
 
-- Use a **stable, unique identifier** per user (e.g., database ID, UUID)
-- Call `identify()` **after authentication** for proper cross-device entitlement sync
-- Let anonymous users access entitlements without requiring login first
+### Basic Usage
 
-### ❌ Don't
+Set attributes using a simple dictionary of string key-value pairs:
 
-- Use **guessable IDs** – they are public-facing
-- Use **emails** as user IDs – this isn't GDPR compliant
-- Use **IDFA or device IDs** – these are device-specific and easily rotated by the OS
-- **Hardcode** strings as user IDs – every user will be treated as the same user
+```swift
+Encore.shared.setUserAttributes([
+    "email": "user@example.com",
+    "subscriptionTier": "premium",
+    "monthsSubscribed": "6",
+    "cancelReason": "too_expensive"
+])
+```
+
+You can also set user attributes when identifying:
+
+```swift
+Encore.shared.identify(
+    userId: "user_12345",
+    attributes: [
+        "email": "user@example.com",
+        "subscriptionTier": "premium",
+        "monthsSubscribed": "6"
+    ]
+)
+```
+
+**Important:** `setUserAttributes()` **merges** with existing attributes - it does not replace them.
+
+### Before Presenting Offers
+
+Set attributes before showing offers for better targeting:
+
+```swift
+// Set cancellation context
+Encore.shared.setUserAttributes([
+    "cancelReason": "too_expensive",
+    "monthsSubscribed": "6"
+])
+
+// Then present the offer
+Encore.placement()
+    .onResult { result in
+        switch result {
+        case .success(.granted(let entitlement)):
+            print("Granted: \(entitlement)")
+            return
+        case .success(.rejected), .failure:
+            break
+        }
+        proceedWithCancellation()
+    }
+    .show()
+```
+
+This allows the dashboard to show personalized offers based on user context.
 
 ---
 
 ## Implementation Examples
 
-### SwiftUI - Optional Login Flow
+### SwiftUI with Login
 
 ```swift
 import SwiftUI
@@ -84,84 +133,132 @@ struct YourApp: App {
 
     init() {
         Encore.shared.configure(apiKey: "pk_your_api_key")
-        // SDK auto-generates an anonymous user ID
     }
 
     var body: some Scene {
         WindowGroup {
             MainAppView()
                 .onAppear {
-                    // Only identify if user is logged in
                     if authManager.isAuthenticated {
-                        Encore.shared.identify(userId: authManager.userId)
+                        Encore.shared.identify(
+                            userId: authManager.userId,
+                            attributes: [
+                                "email": authManager.email,
+                                "subscriptionTier": authManager.tier
+                            ]
+                        )
                     }
-                    // If not logged in, SDK uses anonymous ID automatically
                 }
+        }
+    }
+}
+
+struct SettingsView: View {
+    @EnvironmentObject var authManager: AuthManager
+    
+    var body: some View {
+        Button("Log Out") {
+            Encore.shared.reset()
+            authManager.logout()
         }
     }
 }
 ```
 
-### UIKit - Login Flow
+### UIKit with Login
 
 ```swift
 class LoginViewController: UIViewController {
-    
     func handleSuccessfulLogin(user: User) {
-        // After successful authentication, identify the user
-        Encore.shared.identify(userId: user.id)
+        Encore.shared.identify(
+            userId: user.id,
+            attributes: [
+                "email": user.email,
+                "subscriptionTier": user.subscriptionTier
+            ]
+        )
         navigateToMainApp()
     }
-    
+}
+
+class SettingsViewController: UIViewController {
     func handleLogout() {
-        // Reset to anonymous user
         Encore.shared.reset()
+        authManager.logout()
         navigateToLogin()
     }
 }
 ```
 
-### Anonymous-First App (No Login Required)
+### Apps Without Login
+
+If your app doesn't require users to log in, you don't need to do anything special:
 
 ```swift
-import Encore
-
 @main
-class AppDelegate: UIResponder, UIApplicationDelegate {
-    func application(
-        _ application: UIApplication,
-        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
-    ) -> Bool {
-        // Configure SDK - anonymous ID is auto-generated
+struct YourApp: App {
+    init() {
         Encore.shared.configure(apiKey: "pk_your_api_key")
-        
-        // No need to call identify() - SDK works immediately!
-        return true
+        // That's it! The SDK uses an anonymous ID automatically
     }
+    
+    var body: some Scene {
+        WindowGroup {
+            ContentView()
+        }
+    }
+}
+
+// You can still set attributes for anonymous users
+Button("Cancel Subscription") {
+    Encore.shared.setUserAttributes([
+        "cancelReason": "too_expensive"
+    ])
+    Encore.placement().show()
 }
 ```
 
 ---
 
-## When to Call identify()
+## Common Attribute Use Cases
 
-| Scenario | Action |
-|----------|--------|
-| **App Launch** (user already logged in) | Call `identify()` with their user ID |
-| **After Login** | Call `identify()` immediately after successful authentication |
-| **After Signup** | Call `identify()` immediately after account creation |
-| **Anonymous Users** | No need to call `identify()` - SDK auto-generates an ID |
-| **Cross-Device Sync** | Call `identify()` to sync entitlements across devices |
+### Cancellation Flow
 
----
+```swift
+Button("Cancel Subscription") {
+    Encore.shared.setUserAttributes([
+        "cancelReason": "too_expensive",
+        "monthsSubscribed": "6"
+    ])
+    Encore.placement().show()
+}
+```
 
-## When to Call reset()
+### Feature Paywall
 
-| Scenario | Action |
-|----------|--------|
-| **User Logout** | Call `reset()` to clear user data |
-| **Account Switching** | Call `reset()`, then `identify()` with new user ID |
-| **Testing** | Call `reset()` to clear test data between sessions |
+```swift
+func showPremiumFeature() {
+    Encore.shared.setUserAttributes([
+        "featureRequested": "advanced_analytics",
+        "usageLevel": "power_user"
+    ])
+    Encore.placement().show()
+}
+```
+
+### User Profile Updates
+
+```swift
+func updateUserProfile() {
+    guard let user = currentUser else { return }
+    
+    Encore.shared.setUserAttributes([
+        "email": user.email,
+        "subscriptionTier": user.tier,
+        "monthsSubscribed": "\(user.monthsSubscribed)"
+    ])
+}
+```
 
 ---
 
@@ -186,9 +283,5 @@ These messages confirm user identification is working correctly! ✅
 
 ## Next Steps
 
-Now that users are identified, you're ready to:
-
-- [Check Entitlements](./checking-entitlements) - Learn how to check user entitlements
-- [Present Offers](./presenting-offers) - Show promotional offers to your users
-
-For further help, check out our [example apps](../EncoreSwiftUIDemo) for working implementations of user management.
+- [Presenting Offers](./presenting-offers.mdx) - Show promotional offers to your users
+- [Tracking Entitlements](./tracking-entitlements.mdx) - Learn how to check user entitlements
