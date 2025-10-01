@@ -4,71 +4,58 @@ title: "Install the SDK"
 
 ## Overview
 
-To see the latest release, check out the [repository](https://github.com/your-org/encore-swift-sdk).
+The Encore SDK is distributed as a **private Swift Package**. You'll receive a GitHub Personal Access Token from the Encore team to authenticate and install the package.
 
-You can install via **Swift Package Manager** (recommended) or **CocoaPods**.
+---
+
+## Prerequisites: Obtain Access Credentials
+
+You should have received the following from the Encore team:
+
+- **Repository URL:** `https://github.com/PeachChain/encore-swift-sdk`
+- **Access Token:** A GitHub Personal Access Token (starts with `ghp_...`)
+
+<Note>
+**Don't have credentials?** Contact us in your dedicated support channel  
+</Note>
+
 
 ---
 
 ## Install via Swift Package Manager
 
-Swift Package Manager is a tool for automating the distribution of Swift code and is integrated into the Swift compiler.
+Swift Package Manager is Apple's official dependency manager integrated into Xcode.
 
 ### Step 1: Add Package in Xcode
 
-In **Xcode**, select **File ▸ Add Packages...**
-
-Then, paste the GitHub repository URL:
-
-```
-https://github.com/PeachChain/encore-swift-sdk
-```
-
-in the search bar.
+1. In **Xcode**, select **File ▸ Add Packages...**
+2. Paste the **private repository URL**:
+   ```
+   https://github.com/PeachChain/encore-swift-sdk
+   ```
+3. Press Return or click the search icon
+4. When prompted for credentials, enter:
+   - **Username:** `encore-sdk` (or any text - doesn't matter)
+   - **Password:** Paste the **access token** provided by Encore
+   - Check **"Remember my choice"** to avoid re-entering
 
 ### Step 2: Configure Dependency
 
-With the **encore-swift-sdk** package selected, set the **Dependency Rule** to **Up to Next Major Version** with the lower bound set to **0.1.0**.
+With the **encore-swift-sdk** package selected:
 
-Make sure your project name is selected in **Add to Project**. Then click **Add Package**.
+1. Set **Dependency Rule** to **Up to Next Major Version**
+2. Set the lower bound to **1.0.0**
+3. Make sure your project is selected in **Add to Project**
+4. Click **Add Package**
 
 ### Step 3: Add to Target
 
-After the package has loaded, make sure **Add to Target** is set to your app's name and click **Add Package**.
+After the package resolves:
 
-### Import Encore
+1. Ensure **Add to Target** is set to your app's name
+2. Click **Add Package**
 
-You should now be able to import the SDK:
-
-```swift
-import Encore
-```
-
-**And you're done!** Now you're ready to [configure the SDK](./configure) 👉
-
----
-
-## Install via CocoaPods
-
-### Step 1: Add to Podfile
-
-First, add the following to your `Podfile`:
-
-```ruby
-pod 'Encore', '~> 0.1.0'
-```
-
-### Step 2: Update Spec Repo
-
-Next, run `pod repo update` to update your local spec repo.
-
-### Step 3: Install
-
-Finally, run `pod install` from your terminal.
-
-Note: In your target's **Build Settings → User Script Sandboxing**, this value should be set to **No**.
-
-### Import Encore
+### Step 4: Verify Installation
 
 You should now be able to import the SDK:
 
@@ -76,13 +63,77 @@ You should now be able to import the SDK:
 import Encore
 ```
 
-**And you're done!** Now you're ready to [configure the SDK](./configure) 👉
+**✅ Installation complete!** 
 
 ---
 
-## Updating to a New Release
+## Next Steps
 
-### Swift Package Manager
+Now that the SDK is installed, you're ready to:
+
+- **[Configure the SDK](./configure)** - Set up your API key and initialize Encore
+- **[Identify Users](./user-management)** - Learn how to identify users for offer tracking
+- **[Present Offers](./present-offers)** - Start showing offers in your app
+
+---
+
+## Advanced Topics
+
+<Accordion title="CI/CD Configuration">
+
+If you're using continuous integration, you'll need to configure authentication in your CI environment.
+
+**GitHub Actions**
+
+Add the Encore-provided access token as a repository secret:
+
+1. Go to your repository **Settings → Secrets and variables → Actions**
+2. Click **New repository secret**
+3. Name: `ENCORE_GITHUB_TOKEN`
+4. Value: The access token provided by Encore
+5. Add to your workflow YAML:
+
+```yaml
+- name: Checkout code
+  uses: actions/checkout@v3
+
+- name: Configure Git credentials for Encore SDK
+  run: |
+    git config --global url."https://${{ secrets.ENCORE_GITHUB_TOKEN }}@github.com/PeachChain/".insteadOf "https://github.com/PeachChain/"
+
+- name: Resolve Swift dependencies
+  run: xcodebuild -resolvePackageDependencies -project YourApp.xcodeproj
+```
+
+**Xcode Cloud**
+
+1. Go to **App Store Connect → Your App → Xcode Cloud**
+2. Navigate to **Settings → Environment**
+3. Add a new secret environment variable:
+   - **Name:** `ENCORE_GITHUB_TOKEN`
+   - **Value:** The access token provided by Encore
+4. Add a custom build script (`ci_scripts/ci_post_clone.sh`) to configure Git:
+
+```bash
+#!/bin/sh
+git config --global url."https://${ENCORE_GITHUB_TOKEN}@github.com/PeachChain/".insteadOf "https://github.com/PeachChain/"
+```
+
+**Bitrise / CircleCI / Other CI**
+
+Add the token as an environment variable and configure Git:
+
+```bash
+# Add to your build script
+git config --global url."https://${ENCORE_GITHUB_TOKEN}@github.com/PeachChain/".insteadOf "https://github.com/PeachChain/"
+
+# Then run your build
+xcodebuild -resolvePackageDependencies
+```
+
+</Accordion>
+
+<Accordion title="Updating to a New Release">
 
 To update to the latest version:
 
@@ -91,17 +142,9 @@ To update to the latest version:
 3. Find **encore-swift-sdk** in the list
 4. Click the refresh button or right-click and select **Update Package**
 
-### CocoaPods
+Alternatively, set a specific version:
 
-To update to a new release:
+1. Right-click **encore-swift-sdk** in Package Dependencies
+2. Select **Update to Latest Package Versions** or specify an exact version
 
-1. Update the version specified in your `Podfile`
-2. Run `pod install` again from your terminal
-
----
-
-## Next Steps
-
-- [Configure the SDK](./configure) - Set up your API key and initialize the SDK
-- [Identify Users](./user-management) - Learn how to identify users for entitlement tracking
-- [Check Entitlements](./checking-entitlements) - Start checking user entitlements in your app
+</Accordion>

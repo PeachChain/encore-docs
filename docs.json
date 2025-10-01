@@ -35,9 +35,7 @@
                   "publishers/ios/configure",
                   "publishers/ios/user-management",
                   "publishers/ios/present-offers",
-                  "publishers/ios/track-entitlements",
-                  "publishers/ios/user-attributes",
-                  "publishers/ios/error-handling"
+                  "publishers/ios/track-entitlements"
                 ]
               }
             ]

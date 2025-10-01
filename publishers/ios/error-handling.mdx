@@ -1,191 +1,687 @@
 ---
 title: "Error Handling"
 ---
-Identifying users and managing their identity in your iOS app
 
----
+Comprehensive guide to handling errors in the Encore SDK.
 
 ## Overview
 
-Encore requires user identification to track entitlements and prevent abuse across devices. Proper user management ensures that promotional access is correctly attributed and synchronized.
+The Encore SDK provides clear, actionable errors through the `EncoreError` enum. This guide shows you how to handle each error type gracefully in production apps.
 
 ---
 
-## Anonymous Users
+## Core Principle: Never Crash the Host App
 
-Encore does **not** automatically generate user IDs. You must call `identify(userId:)` before checking entitlements or presenting offers.
+**The Encore SDK is designed to never crash your app.** This is a fundamental design principle:
 
----
+### ✅ How We Ensure This
 
-## Identified Users
+1. **All errors delivered via callbacks** - Errors are returned through `onError` callbacks, not thrown directly
+2. **No force unwraps in critical paths** - Safe optional handling throughout
+3. **Graceful degradation** - If the SDK encounters issues, it returns an error and allows your app to continue
+4. **Result types** - Public APIs use `Result<Success, EncoreError>` for explicit error handling
 
-When you have a user's identity (e.g., after login or account creation), call `identify(userId:)` to enable entitlement tracking:
+### 🎯 What This Means For You
+
+**Your app should never crash because of Encore.** If an offer fails to load:
+- ✅ Your app continues running normally
+- ✅ You receive an error via `onError` callback
+- ✅ You decide how to handle it (retry, log, or skip)
+- ✅ Users can always proceed with their original action
+
+### Example: Safe Error Handling
 
 ```swift
-// After retrieving a user's ID from login or account creation
-Encore.shared.identify(userId: user.id)
-```
-
-This tells Encore who the current user is and enables:
-- Fetching their current entitlements from the server
-- Tracking promotional access across devices
-- Preventing abuse through device fingerprinting
-
-### Resetting User Identity
-
-When a user logs out or you want to anonymize them, call `reset()`:
-
-```swift
-// When the user signs out
-Encore.shared.reset()
-```
-
-This clears:
-- The stored user ID
-- Cached entitlement data
-- All provisional grants
-
----
-
-## Best Practices for User IDs
-
-### ✅ Do
-
-- Use a **stable, unique identifier** per user (e.g., database ID, UUID)
-- **Persist** the user ID across app sessions
-- Call `identify()` **after authentication** but **before** checking entitlements
-
-### ❌ Don't
-
-- Use **guessable IDs** – they should be random and unpredictable
-- Use **emails** as user IDs – this isn't GDPR compliant
-- Use **IDFA or device IDs** – these are device-specific and can be rotated
-- **Hardcode** strings as user IDs – every user will be treated as the same user
-- Use **sensitive personal information** in user IDs
-
----
-
-## Implementation Examples
-
-### SwiftUI with Authentication
-
-```swift
-import SwiftUI
-import Encore
-
-@main
-struct YourApp: App {
-    @StateObject private var authManager = AuthManager()
-
-    init() {
-        Encore.shared.configure(apiKey: "pk_your_api_key")
+// ✅ Even if everything fails, your app continues running
+Encore.placement()
+    .onCreditApplied { amount in
+        // Offer succeeded - apply credit
+        applyCredit(amount)
     }
+    .onError { error in
+        // Offer failed - log it and let user continue
+        print("Offer failed: \(error)")
+        analytics.trackError(error)
+        
+        // IMPORTANT: Always provide fallback
+        proceedWithOriginalFlow() // User can still cancel, etc.
+    }
+    .show()
 
-    var body: some Scene {
-        WindowGroup {
-            if authManager.isAuthenticated {
-                MainAppView()
-                    .onAppear {
-                        // Identify user when authenticated
-                        Encore.shared.identify(userId: authManager.userId)
+// App continues normally regardless of SDK outcome
+```
+
+### ⚡ Async/Await API: Also Crash-Safe
+
+The async/await `show()` method does throw errors, **but Swift's compiler enforces error handling at compile-time**, making it also crash-safe:
+
+```swift
+// ❌ This won't even compile - compiler catches it
+let result = await Encore.placement().show()  // Error: Missing 'try'
+
+// ✅ Compiler forces you to handle errors
+do {
+    let result = try await Encore.placement().show()
+    handleResult(result)
+} catch {
+    // Swift compiler requires this catch block
+    handleError(error as? EncoreError ?? .unknown)
+}
+```
+
+**Key Point:** You literally cannot call the async API without handling errors - Swift won't let your code compile. This means both APIs are equally safe:
+
+```swift
+// Both approaches are crash-safe:
+
+// Option 1: Async/await (compile-time safety)
+do {
+    let result = try await Encore.placement().show()
+} catch {
+    handleError(error) // Compiler forces this
+}
+
+// Option 2: Callback (runtime safety)  
+Encore.placement()
+    .onError { error in
+        handleError(error) // You provide this
+    }
+    .show()
+```
+
+---
+
+## Error Types
+
+### Configuration Errors
+
+#### `.notInitialized`
+
+**When:** SDK used before calling `configure()`
+
+**Resolution:** Call `configure()` in `AppDelegate` or app initialization
+
+```swift
+// ❌ Causes .notInitialized error
+class AppDelegate: UIResponder, UIApplicationDelegate {
+    func application(_ application: UIApplication, didFinishLaunchingWithOptions...) -> Bool {
+        // Forgot to configure!
+        return true
+    }
+}
+
+// ✅ Correct
+class AppDelegate: UIResponder, UIApplicationDelegate {
+    func application(_ application: UIApplication, didFinishLaunchingWithOptions...) -> Bool {
+        Encore.shared.configure(apiKey: "your-api-key")
+        return true
+    }
+}
+```
+
+**Error Handling:**
+```swift
+Encore.placement()
+    .onError { error in
+        if case .notInitialized = error {
+            print("⚠️ SDK not configured - check AppDelegate")
+            // Log to crash reporting
+            Crashlytics.log("Encore SDK not initialized")
+        }
+    }
+    .show()
+```
+
+---
+
+### Network Errors
+
+#### `.networkError(Error)`
+
+**When:** No internet connection or network timeout
+
+**Resolution:** Allow retry or gracefully degrade
+
+```swift
+Encore.placement()
+    .onError { error in
+        if case .networkError(let underlyingError) = error {
+            // Show user-friendly message
+            showAlert(
+                title: "Connection Issue",
+                message: "Please check your internet connection and try again.",
+                actions: [
+                    .init(title: "Retry") {
+                        // Retry presentation
+                        self.showEncoreOffer()
+                    },
+                    .init(title: "Continue") {
+                        // Skip offer, proceed with original flow
+                        self.continueWithoutOffer()
                     }
+                ]
+            )
+            
+            // Log for debugging
+            print("Network error: \(underlyingError.localizedDescription)")
+        }
+    }
+    .show()
+```
+
+---
+
+### API Errors
+
+#### `.apiError(code: String?, message: String)`
+
+**When:** Server returns an error response
+
+**Resolution:** Log details and provide fallback
+
+```swift
+Encore.placement()
+    .onError { error in
+        if case .apiError(let code, let message) = error {
+            // Log with error code for support
+            analytics.track("encore_api_error", [
+                "code": code ?? "unknown",
+                "message": message
+            ])
+            
+            // Show generic message to user
+            showToast("Unable to load offer at this time")
+            
+            // Proceed with original flow
+            proceedWithCancellation()
+        }
+    }
+    .show()
+```
+
+#### `.httpError(statusCode: Int, message: String?)`
+
+**When:** HTTP error (4xx, 5xx)
+
+**Resolution:** Handle based on status code
+
+```swift
+Encore.placement()
+    .onError { error in
+        if case .httpError(let statusCode, let message) = error {
+            switch statusCode {
+            case 401, 403:
+                // Authentication/authorization error
+                print("⚠️ Invalid API key or unauthorized")
+                Crashlytics.log("Encore auth error: \(statusCode)")
+                
+            case 429:
+                // Rate limited
+                showToast("Too many requests - please try again later")
+                
+            case 500...599:
+                // Server error
+                print("Server error: \(statusCode)")
+                showToast("Service temporarily unavailable")
+                
+            default:
+                print("HTTP error: \(statusCode) - \(message ?? "No message")")
+            }
+            
+            // Always provide fallback
+            proceedWithOriginalFlow()
+        }
+    }
+    .show()
+```
+
+---
+
+### Data Errors
+
+#### `.decodingError(Error)`
+
+**When:** Server response doesn't match expected format
+
+**Resolution:** Log for debugging, proceed gracefully
+
+```swift
+Encore.placement()
+    .onError { error in
+        if case .decodingError(let decodingError) = error {
+            // Log for SDK team to investigate
+            print("⚠️ Response decoding failed: \(decodingError)")
+            
+            // Report to crash analytics
+            Crashlytics.recordError(decodingError, userInfo: [
+                "context": "encore_offer_presentation"
+            ])
+            
+            // Proceed without offer
+            proceedWithoutOffer()
+        }
+    }
+    .show()
+```
+
+#### `.invalidURL`
+
+**When:** URL construction fails (rare)
+
+**Resolution:** Log and report as bug
+
+```swift
+Encore.placement()
+    .onError { error in
+        if case .invalidURL = error {
+            // This should never happen in production
+            Crashlytics.log("Encore: Invalid URL construction")
+            
+            // Proceed without offer
+            proceedWithoutOffer()
+        }
+    }
+    .show()
+```
+
+---
+
+### Presentation Errors
+
+#### `.noOfferAvailable`
+
+**When:** No campaigns configured or user doesn't match audience
+
+**Resolution:** This is expected - proceed with original flow
+
+```swift
+// Option 1: Use onNoOffersAvailable callback (recommended)
+Encore.placement()
+    .onNoOffersAvailable {
+        // Normal flow - not an error!
+        proceedWithCancellation()
+    }
+    .show()
+
+// Option 2: Handle in onError
+Encore.placement()
+    .onError { error in
+        // This will NOT fire for .noOfferAvailable
+        // Use onNoOffersAvailable instead
+    }
+    .show()
+```
+
+**Note:** `.noOfferAvailable` is delivered through `EncorePresentationResult.noOffersAvailable`, NOT through the error handler.
+
+---
+
+### User State Errors
+
+#### `.userIdNotAvailable`
+
+**When:** Internal operation requires userId but none is set (rare in normal use)
+
+**Resolution:** SDK auto-generates anonymous IDs, so this is rare
+
+```swift
+Encore.placement()
+    .onError { error in
+        if case .userIdNotAvailable = error {
+            // This should be rare - SDK auto-generates IDs
+            print("⚠️ User ID issue - attempting recovery")
+            
+            // Identify user explicitly
+            Encore.shared.identify(userId: "user_\(UUID().uuidString)")
+            
+            // Retry
+            retryOfferPresentation()
+        }
+    }
+    .show()
+```
+
+---
+
+### Unknown Errors
+
+#### `.unknown`
+
+**When:** Unexpected system error
+
+**Resolution:** Log and gracefully degrade
+
+```swift
+Encore.placement()
+    .onError { error in
+        if case .unknown = error {
+            // Log for investigation
+            print("⚠️ Unknown Encore error")
+            Crashlytics.log("Encore: Unknown error in offer presentation")
+            
+            // Proceed without offer
+            proceedWithoutOffer()
+        }
+    }
+    .show()
+```
+
+---
+
+## Complete Error Handling Pattern
+
+### SwiftUI
+
+```swift
+struct CancellationView: View {
+    @State private var showEncoreOffer = false
+    @State private var errorMessage: String?
+    @State private var showErrorAlert = false
+    
+    var body: some View {
+        VStack {
+            Button("Cancel Subscription") {
+                showEncoreOffer = true
+            }
+        }
+        .encoreSheet(isPresented: $showEncoreOffer) { creditAmount in
+            // Success - credit applied
+            handleCreditAccepted(amount: creditAmount)
+            
+        } onDecline: { reason in
+            // User declined
+            proceedWithCancellation()
+            
+        } onNoOffersAvailable: {
+            // No offers configured - normal flow
+            proceedWithCancellation()
+            
+        } onError: { error in
+            // Handle all errors
+            handleError(error)
+        }
+        .alert("Error", isPresented: $showErrorAlert) {
+            Button("OK") {
+                proceedWithCancellation()
+            }
+        } message: {
+            Text(errorMessage ?? "An error occurred")
+        }
+    }
+    
+    func handleError(_ error: EncoreError) {
+        switch error {
+        case .networkError:
+            errorMessage = "Please check your internet connection"
+            showErrorAlert = true
+            
+        case .notInitialized:
+            errorMessage = "Service temporarily unavailable"
+            showErrorAlert = true
+            Crashlytics.log("Encore not initialized")
+            
+        case .apiError(let code, let message):
+            errorMessage = "Unable to load offer"
+            showErrorAlert = true
+            analytics.track("encore_api_error", ["code": code ?? "unknown"])
+            
+        case .httpError(let statusCode, _):
+            if statusCode >= 500 {
+                errorMessage = "Service temporarily unavailable"
             } else {
-                LoginView()
+                errorMessage = "Unable to load offer"
+            }
+            showErrorAlert = true
+            
+        default:
+            errorMessage = "An error occurred"
+            showErrorAlert = true
+            print("Encore error: \(error.localizedDescription ?? "Unknown")")
+        }
+        
+        // Always allow user to proceed
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            if showErrorAlert {
+                proceedWithCancellation()
             }
         }
     }
 }
 ```
 
-### UIKit with Login Flow
+### UIKit
 
 ```swift
-class LoginViewController: UIViewController {
+class CancellationViewController: UIViewController {
     
-    func handleSuccessfulLogin(user: User) {
-        // After successful authentication, identify the user
-        Encore.shared.identify(userId: user.id)
-        
-        // Now safe to check entitlements or present offers
-        navigateToMainApp()
+    @IBAction func cancelButtonTapped() {
+        Encore.shared.presentOffer(from: self) { [weak self] result in
+            switch result {
+            case .success(let presentationResult):
+                self?.handlePresentationResult(presentationResult)
+                
+            case .failure(let error):
+                self?.handleError(error)
+            }
+        }
     }
     
-    func handleLogout() {
-        // Clear user identity
-        Encore.shared.reset()
+    func handlePresentationResult(_ result: EncorePresentationResult) {
+        switch result {
+        case .creditApplied(let amount):
+            applyCreditToAccount(amount: amount)
+            
+        case .declined:
+            proceedWithCancellation()
+            
+        case .noOffersAvailable:
+            proceedWithCancellation()
+        }
+    }
+    
+    func handleError(_ error: EncoreError) {
+        let alert: UIAlertController
         
-        // Navigate to login
-        navigateToLogin()
+        switch error {
+        case .networkError:
+            alert = UIAlertController(
+                title: "Connection Issue",
+                message: "Please check your internet connection",
+                preferredStyle: .alert
+            )
+            alert.addAction(UIAlertAction(title: "Retry", style: .default) { _ in
+                self.cancelButtonTapped()
+            })
+            alert.addAction(UIAlertAction(title: "Continue", style: .cancel) { _ in
+                self.proceedWithCancellation()
+            })
+            
+        case .notInitialized:
+            alert = UIAlertController(
+                title: "Error",
+                message: "Service temporarily unavailable",
+                preferredStyle: .alert
+            )
+            alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in
+                self.proceedWithCancellation()
+            })
+            Crashlytics.log("Encore SDK not initialized")
+            
+        case .apiError(let code, _):
+            alert = UIAlertController(
+                title: "Unable to Load Offer",
+                message: "Please try again later",
+                preferredStyle: .alert
+            )
+            alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in
+                self.proceedWithCancellation()
+            })
+            analytics.track("encore_api_error", ["code": code ?? "unknown"])
+            
+        default:
+            alert = UIAlertController(
+                title: "Error",
+                message: error.localizedDescription ?? "An error occurred",
+                preferredStyle: .alert
+            )
+            alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in
+                self.proceedWithCancellation()
+            })
+        }
+        
+        present(alert, animated: true)
     }
 }
 ```
 
-### Persisting User IDs
+---
 
-Store your user ID securely so it persists across app launches:
+## Best Practices
+
+### ✅ DO
 
 ```swift
-class UserManager {
-    private let userIdKey = "com.yourapp.userId"
-    
-    func saveUserId(_ userId: String) {
-        UserDefaults.standard.set(userId, forKey: userIdKey)
-        Encore.shared.identify(userId: userId)
+// ✅ Always handle errors gracefully
+.onError { error in
+    handleGracefully(error)
+    proceedWithOriginalFlow() // Never block users
+}
+
+// ✅ Log errors for debugging
+.onError { error in
+    print("Encore error: \(error)")
+    analytics.trackError(error)
+    // Still proceed with user's original action
+}
+
+// ✅ Provide fallback behavior (CRITICAL)
+.onError { error in
+    print("Error: \(error)")
+    proceedWithOriginalFlow() // Always let users continue
+}
+
+// ✅ Show user-friendly messages
+.onError { error in
+    if case .networkError = error {
+        showToast("Please check your internet connection")
+    } else {
+        showToast("Unable to load offer")
     }
-    
-    func loadUserId() -> String? {
-        return UserDefaults.standard.string(forKey: userIdKey)
+    // Still allow user to proceed
+    proceedWithCancellation()
+}
+
+// ✅ Use switch for comprehensive handling
+.onError { error in
+    switch error {
+    case .networkError: // handle
+    case .apiError: // handle
+    case .notInitialized: // handle
+    default: // handle
     }
-    
-    func logout() {
-        UserDefaults.standard.removeObject(forKey: userIdKey)
-        Encore.shared.reset()
-    }
+    // Always provide escape hatch
+    allowUserToContinue()
+}
+
+// ✅ Treat SDK errors as non-blocking
+.onError { error in
+    // SDK failed, but app continues
+    logToAnalytics(error)
+    showOptionalMessage(error)
+    continueWithoutOffer() // User flow unaffected
 }
 ```
 
----
+### ❌ DON'T
 
-## When to Call identify()
+```swift
+// ❌ DON'T crash on SDK errors (CRITICAL)
+.onError { error in
+    fatalError("Encore error") // NEVER DO THIS
+}
 
-| Scenario | Action |
-|----------|--------|
-| **App Launch** (user already logged in) | Call `identify()` in your app's initialization |
-| **After Login** | Call `identify()` immediately after successful authentication |
-| **After Signup** | Call `identify()` immediately after account creation |
-| **Before Checking Entitlements** | Always ensure `identify()` was called first |
-| **Before Presenting Offers** | Always ensure `identify()` was called first |
+// ❌ DON'T propagate errors that crash
+.onError { error in
+    throw error // Crashes if not caught
+}
 
----
+// ❌ DON'T block user flow on errors
+.onError { error in
+    showAlert("Error occurred")
+    // User can't proceed - stuck forever
+}
 
-## When to Call reset()
+// ❌ DON'T ignore errors without fallback
+.onError { _ in
+    // Silent failure - user stuck in cancellation flow
+}
 
-| Scenario | Action |
-|----------|--------|
-| **User Logout** | Call `reset()` to clear user data |
-| **Account Switching** | Call `reset()`, then `identify()` with new user ID |
-| **Testing** | Call `reset()` to clear test data between sessions |
+// ❌ DON'T show technical errors to users
+.onError { error in
+    showAlert(error.localizedDescription) // Too technical
+}
 
----
-
-## Verification
-
-After calling `identify()`, you should see this in your console:
-
+// ❌ DON'T make SDK errors critical
+.onError { error in
+    // Treating offer failure as app failure
+    appState.criticalError = error
+    disableAllFeatures() // Way too aggressive
+}
 ```
-🔧 [CHATAPP] Identified user with Encore: user_abc123
-🔄 [ENTITLEMENTS] REFRESH UserId changed from 'nil' to 'user_abc123' - refreshing
+
+### 🎯 Golden Rule
+
+**SDK errors should be logged and handled gracefully, but NEVER prevent users from completing their intended action.**
+
+```swift
+// Perfect error handling example
+Button("Cancel Subscription") {
+    showOffer = true
+}
+.encoreSheet(isPresented: $showOffer) { credit in
+    // Bonus: User got an offer
+    applyCredit(credit)
+} onError: { error in
+    // SDK failed, but that's okay
+    print("Offer unavailable: \(error)")
+    // User can still cancel - SDK doesn't block them
+}
+// Either way (success or error), user continues their journey
 ```
 
-If you see these messages, user identification is working correctly! ✅
+---
+
+## Testing Error Scenarios
+
+### Network Errors
+
+```swift
+// Simulate by disabling network in simulator
+// Settings > Airplane Mode ON
+
+Encore.placement()
+    .onError { error in
+        // Should receive .networkError
+        XCTAssertEqual(error, .networkError)
+    }
+    .show()
+```
+
+### Configuration Errors
+
+```swift
+// Don't call configure()
+Encore.placement()
+    .onError { error in
+        // Should receive .notInitialized
+    }
+    .show()
+```
 
 ---
 
 ## Next Steps
 
-Now that users are identified, you're ready to:
-
-- [Check Entitlements](./checking-entitlements) - Learn how to check user entitlements
-- [Present Offers](./presenting-offers) - Show promotional offers to your users
-
-For further help, check out our [example apps](../EncoreSwiftUIDemo) for working implementations of user management.
+- [Presenting Offers](./presenting-offers.mdx) - Show offers with error handling
+- [Tracking Entitlements](./tracking-entitlements.mdx) - Monitor entitlement state
+- [User Management](./user-management.mdx) - Identify and manage users

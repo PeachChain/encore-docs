@@ -6,12 +6,6 @@ As soon as your app launches, you need to configure the SDK with your **API Key*
 
 ---
 
-## Sign Up & Grab Your API Key
-
-If you haven't already, sign up for a free account on [Encore](https://encore.dev). Then, when you're through to the Dashboard, click **Settings** from the panel on the left, click **API Keys** and copy your **Public API Key**.
-
----
-
 ## Initialize Encore in Your App
 
 Begin by editing your main application entry point. Depending on your app architecture, this could be your `AppDelegate.swift` for UIKit apps or your main `App` struct for SwiftUI apps.
@@ -58,7 +52,11 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
 }
 ```
 
-This configures a shared instance of `Encore`, the primary class for interacting with the SDK's API. Make sure to replace `pk_your_api_key_here` with your public API key that you just retrieved.
+This configures a shared instance of `Encore`, the primary class for interacting with the SDK's API. Make sure to replace `pk_your_api_key_here` with your public API key.
+
+<Note>
+If you don't have access to your API key, please contact your Encore representative.
+</Note>
 
 ---
 

@@ -6,7 +6,7 @@ Present Encore retention offers to users at key moments in your app.
 
 ## Overview
 
-Encore allows you to present targeted offers (free trials, discounts, credits) to users at critical moments like cancellation flows or feature paywalls. The SDK provides multiple presentation methods to fit your app's architecture.
+Encore allows you to present targeted offers to users in exchange for rewards (free trials, discounts, credits) at critical moments like cancellation flows or feature paywalls. The SDK provides multiple presentation methods to fit your app's architecture.
 
 ---
 
@@ -14,36 +14,62 @@ Encore allows you to present targeted offers (free trials, discounts, credits) t
 
 ### SwiftUI: Fluent Builder API (Recommended)
 
-The most concise and flexible way to present offers in SwiftUI - perfect for button actions:
+The most concise and flexible way to present offers in SwiftUI - perfect for button actions.
+
+#### Minimal Setup
+
+Get started with a single line - no callbacks required:
+
+```swift
+Button("Show Offers") {
+    Encore.placement().show()
+}
+```
+
+That's it! The SDK handles everything automatically.
+
+#### Full-Featured Setup (Cancellation Flow)
+
+Add optional callbacks for custom logic, analytics, or post-presentation actions:
 
 ```swift
 Button("Cancel Subscription") {
     Encore.placement()
-        .onCreditApplied { amount in
-            print("User accepted \(amount) in credit")
-            applyCreditToAccount(amount: amount)
+        .onLoadingStateChange { isLoading in
+            // optional: show/hide a spinner
+            self.isLoadingOffer = isLoading
         }
-        .onDecline { reason in
-            print("User declined: \(reason)")
-            proceedWithCancellation()
-        }
-        .onNoOffersAvailable {
-            proceedWithCancellation()
-        }
-        .onError { error in
-            print("Error: \(error)")
+        .onResult { result in
+            switch result {
+            case .success(.granted(let entitlement)):
+                // handle success by entitlement type
+                analytics.track("offer_accepted")
+                applyEntitlement(entitlement)
+                return // don't proceed with cancellation
+            case .success(.rejected):
+                // user declined or no offers available
+                analytics.track("offer_declined")
+                break
+            case .failure(let error):
+                // log error
+                analytics.track("offer_error", error: error)
+                break
+            }
+            // proceed with original user action
             proceedWithCancellation()
         }
         .show()
 }
 ```
 
+> **⚠️ Important:** When presenting offers in critical flows (like cancellation), always ensure the user can proceed with their intended action. In the example above, `proceedWithCancellation()` is called for both rejection and error cases, ensuring users are never blocked from canceling their subscription.
+
 **Why it's recommended:**
-- ✅ Clean, readable callback chain
-- ✅ Type-safe - no manual result switching
+- ✅ Zero config to get started - works out of the box
+- ✅ Optional callbacks for custom logic when needed
 - ✅ Works directly in button actions
 - ✅ No @State management needed
-- ✅ Handles all scenarios inline
+- ✅ Clean, readable callback chain
 
 ---
 
@@ -61,31 +87,17 @@ struct CancellationView: View {
     var body: some View {
         VStack {
             Text("We're sad to see you go...")
-            
-            Button("Cancel Subscription") {
-                showEncoreOffer = true
-            }
+            Button("Cancel Subscription") { showEncoreOffer = true }
         }
-        .encoreSheet(isPresented: $showEncoreOffer) { creditAmount in
-            // User accepted the offer!
-            print("User received \(creditAmount) in credit")
-            self.applyCreditToAccount(amount: creditAmount)
-        } onDecline: { reason in
-            // User declined the offer
-            switch reason {
-            case .userCancelled:
-                print("User dismissed the offer")
-            case .userDeclinedOffer:
-                print("User explicitly declined")
+        .encoreSheet(isPresented: $showEncoreOffer) { result in
+            switch result {
+            case .success(.granted(let entitlement)):
+                print("Granted: \(entitlement)")
+                return
+            case .success(.rejected), .failure:
+                break
             }
-            self.proceedWithCancellation()
-        } onNoOffersAvailable: {
-            // No offers configured for this user
-            self.proceedWithCancellation()
-        } onError: { error in
-            // Handle errors gracefully
-            print("Error: \(error)")
-            self.proceedWithCancellation()
+            proceedWithCancellation()
         }
     }
 }
@@ -101,30 +113,16 @@ For UIKit apps or when you need programmatic control:
 import EncoreSDK
 
 class CancellationViewController: UIViewController {
-    
     @IBAction func cancelButtonTapped(_ sender: UIButton) {
-        // Present Encore offer
         Encore.shared.presentOffer(from: self) { result in
             switch result {
-            case .success(let presentationResult):
-                switch presentationResult {
-                case .creditApplied(let amount):
-                    print("User accepted \(amount) in credit!")
-                    self.applyCreditToAccount(amount: amount)
-                    
-                case .declined(let reason):
-                    print("User declined: \(reason)")
-                    self.proceedWithCancellation()
-                    
-                case .noOffersAvailable:
-                    print("No offers available for this user")
-                    self.proceedWithCancellation()
-                }
-                
-            case .failure(let error):
-                print("Error presenting offer: \(error)")
-                self.proceedWithCancellation()
+            case .success(.granted(let entitlement)):
+                print("Granted: \(entitlement)")
+                return
+            case .success(.rejected), .failure:
+                break
             }
+            self.proceedWithCancellation()
         }
     }
 }
@@ -141,25 +139,109 @@ Button("Cancel Subscription") {
     Task {
         do {
             let result = try await Encore.shared.show()
-            
             switch result {
-            case .creditApplied(let amount):
-                print("User accepted \(amount) in credit!")
-                
-            case .declined(let reason):
-                print("User declined: \(reason)")
-                
-            case .noOffersAvailable:
-                print("No offers available")
+            case .granted(let entitlement):
+                print("Granted: \(entitlement)")
+                return
+            case .rejected:
+                break
             }
         } catch {
-            print("Error: \(error)")
+            // error occurred
         }
+        proceedWithCancellation()
     }
 }
 ```
 
 **Note:** The fluent builder API is usually more concise (see above).
+
+---
+
+## Result Types
+
+### Entitlements
+
+When an offer is granted, you receive one of these entitlement types:
+
+| Entitlement | Description | Example Use Case |
+|-------------|-------------|------------------|
+| `.freeTrial(value:unit:)` | Time-limited free access to premium features. `value`: Duration amount, `unit`: `.days` or `.months` | 7-day free trial, 1-month trial |
+| `.discount(value:unit:)` | Percentage or dollar-based discount on subscription. `value`: Discount amount, `unit`: `.percent` or `.dollars` | 50% off, $10 off |
+| `.credit(value:unit:)` | Account credits applied to user's balance. `value`: Credit amount, `unit`: `.dollars` | $5 account credit |
+
+
+**Example:**
+```swift
+case .success(.granted(let entitlement)):
+    switch entitlement {
+    case .freeTrial(let value, let unit):
+        print("Free trial: \(value ?? 0) \(unit?.description ?? "")")
+    case .discount(let value, let unit):
+        print("Discount: \(value ?? 0) \(unit?.description ?? "")")
+    case .credit(let value, let unit):
+        print("Credit: \(value ?? 0) \(unit?.description ?? "")")
+    }
+```
+
+### Rejection Reasons
+
+When an offer is rejected, you receive one of these reasons:
+
+| Reason | Description | When This Occurs |
+|--------|-------------|------------------|
+| `.userCancelled` | User dismissed the offer without interacting | User tapped outside modal, pressed back/close |
+| `.userDeclinedOffer` | User explicitly declined the offer | User tapped "No Thanks" or decline button |
+| `.noOffersAvailable` | No offers configured for this user | No campaigns match user criteria, or all offers exhausted |
+
+**Example:**
+```swift
+case .success(.rejected(let reason)):
+    switch reason {
+    case .userCancelled:
+        analytics.track("offer_dismissed")
+    case .userDeclinedOffer:
+        analytics.track("offer_declined_explicit")
+    case .noOffersAvailable:
+        analytics.track("no_offers_available")
+    }
+```
+
+### Errors
+
+When a system error occurs, you receive one of these errors:
+
+| Error | Description | When This Occurs |
+|-------|-------------|------------------|
+| `.networkError(Error)` | Network connection issue | No internet, timeout, connection failed |
+| `.notInitialized` | SDK not configured | `configure()` not called before use |
+| `.apiError(code:message:)` | API returned error response | Server validation error, business logic error |
+| `.httpError(statusCode:message:)` | HTTP status error | 4xx client errors, 5xx server errors |
+| `.decodingError(Error)` | Response parsing failed | Unexpected response format (rare) |
+| `.userIdNotAvailable` | User ID required but missing | Internal SDK issue (rare, auto-generates IDs) |
+| `.invalidURL` | URL construction failed | Malformed URL (rare) |
+| `.unknown` | Unexpected system error | Catch-all for unforeseen issues |
+
+**Example:**
+```swift
+case .failure(let error):
+    switch error {
+    case .networkError(let underlyingError):
+        showAlert("Check your internet connection")
+        print("Network: \(underlyingError)")
+    case .notInitialized:
+        print("SDK not configured")
+        Crashlytics.log("Encore not initialized")
+    case .apiError(let code, let message):
+        analytics.track("api_error", ["code": code ?? "unknown"])
+    case .httpError(let statusCode, _):
+        print("HTTP \(statusCode)")
+    default:
+        print("Error: \(error)")
+    }
+```
+
+> **💡 Note:** The SDK is designed to never crash your app. All errors are delivered via callbacks, allowing you to handle them gracefully and always let users proceed with their intended action.
 
 ---
 
@@ -182,198 +264,7 @@ Button("Cancel Subscription") {
 
 ---
 
-## Handling Results
-
-### Credit Applied
-
-When a user accepts an offer, you receive the credit amount to apply:
-
-```swift
-.onCreditApplied { amount in
-    // Apply credit to user's account
-    AccountManager.shared.addCredit(amount: amount)
-    
-    // Show confirmation
-    showToast("You've received \(amount) in credit!")
-    
-    // Update UI to reflect new balance
-    refreshAccountBalance()
-}
-```
-
-### User Declined
-
-Handle gracefully when users decline:
-
-```swift
-.onDecline { reason in
-    switch reason {
-    case .userCancelled:
-        // User dismissed without interacting
-        analytics.track("offer_dismissed")
-        
-    case .userDeclinedOffer:
-        // User explicitly declined the offer
-        analytics.track("offer_declined")
-        proceedWithOriginalAction()
-    }
-}
-```
-
-### No Offers Available
-
-This happens when:
-- No campaigns are configured in the dashboard
-- User doesn't match any audience filters
-- User already has active entitlements
-
-```swift
-.onNoOffersAvailable {
-    // Proceed with original flow
-    proceedWithCancellation()
-}
-```
-
-### Error Handling
-
-Always handle errors gracefully:
-
-```swift
-.onError { error in
-    switch error {
-    case .networkError:
-        // No internet connection
-        showRetryDialog()
-        
-    case .configurationError:
-        // SDK not configured properly
-        print("Check API key configuration")
-        
-    case .noOfferAvailable:
-        // No offers to show
-        proceedWithOriginalAction()
-        
-    default:
-        // Unknown error
-        print("Error: \(error)")
-        proceedWithOriginalAction()
-    }
-}
-```
-
----
-
-## Setting User Context
-
-Before presenting offers, set user attributes for better targeting:
-
-```swift
-// Set attributes before showing offer
-Encore.shared.setUserAttributes([
-    "email": "user@example.com",
-    "subscriptionTier": "premium",
-    "monthsSubscribed": "6",
-    "cancelReason": "too_expensive"
-])
-
-// Then present the offer
-Encore.placement()
-    .onCreditApplied { amount in
-        // Handle acceptance
-    }
-    .show()
-```
-
-This allows the dashboard to show personalized offers based on user context.
-
----
-
-## Best Practices
-
-### 1. Always Handle All Callbacks
-
-```swift
-// ✅ Good - Handle all scenarios
-.encoreSheet(isPresented: $showOffer) { amount in
-    // Credit applied
-} onDecline: { reason in
-    // User declined
-} onNoOffersAvailable: {
-    // No offers
-} onError: { error in
-    // Error occurred
-}
-
-// ❌ Bad - Missing error handling
-.encoreSheet(isPresented: $showOffer) { amount in
-    // Only handling success
-}
-```
-
-### 2. Don't Block Core Functionality
-
-```swift
-// ✅ Good - Always allow user to proceed
-Button("Cancel Subscription") {
-    showEncoreOffer = true
-}
-.encoreSheet(isPresented: $showEncoreOffer) { amount in
-    applyCredit(amount)
-} onDecline: { _ in
-    proceedWithCancellation() // Let user cancel
-}
-
-// ❌ Bad - Forcing user to see offer
-Button("Cancel Subscription") {
-    // No way to skip offer
-    showEncoreOffer = true
-}
-```
-
-### 3. Track Analytics
-
-```swift
-.onCreditApplied { amount in
-    analytics.track("encore_offer_accepted", [
-        "amount": amount,
-        "context": "cancellation_flow"
-    ])
-}
-.onDecline { reason in
-    analytics.track("encore_offer_declined", [
-        "reason": "\(reason)",
-        "context": "cancellation_flow"
-    ])
-}
-```
-
-### 4. Provide Visual Feedback
-
-```swift
-@State private var isLoadingOffer = false
-
-Button("Cancel Subscription") {
-    isLoadingOffer = true
-    showEncoreOffer = true
-}
-.encoreSheet(isPresented: $showEncoreOffer) { amount in
-    isLoadingOffer = false
-    // Handle success
-} onDecline: { _ in
-    isLoadingOffer = false
-    // Handle decline
-}
-.overlay {
-    if isLoadingOffer {
-        ProgressView()
-    }
-}
-```
-
----
-
 ## Next Steps
 
 - [Tracking Entitlements State](./tracking-entitlements.mdx) - Monitor what entitlements users have
-- [Setting User Attributes](./setting-user-attributes.mdx) - Personalize offers with user data
-- [Error Handling](./error-handling.mdx) - Comprehensive error handling guide
+- [User Management](./user-management.mdx) - Identify users and set attributes for personalized offers
