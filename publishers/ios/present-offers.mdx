@@ -154,7 +154,118 @@ Button("Cancel Subscription") {
 }
 ```
 
-**Note:** The fluent builder API is usually more concise (see above).
+---
+
+## Third-Party Paywall Integrations
+
+Encore seamlessly integrates with popular paywall providers like Superwall and RevenueCat. Present retention offers as a last-chance save when users dismiss your paywalls without converting.
+
+<Accordion title="Superwall Integration">
+
+If you're using Superwall for your paywalls, you can seamlessly integrate Encore to present retention offers at strategic moments.
+
+#### Option 1: Custom Paywall Action
+
+Create/Update the Superwall delegate to handle custom actions from your paywall:
+
+```swift
+import SuperwallKit
+import EncoreSDK
+
+// Listen to Superwall's custom actions
+class SWDelegate: SuperwallDelegate {
+    func handleCustomPaywallAction(withName name: String) {
+        // Action is EncoreTrigger
+        if name == "EncoreTrigger" {
+            Encore.placement().show()
+        }
+    }
+}
+```
+
+Then, in the Superwall editor, you can add a custom action named `"EncoreTrigger"` to any button or element in your paywall. This gives you full control over when and where Encore offers appear within your paywall flow.
+
+<video
+  className="w-full aspect-video rounded-xl"
+  autoPlay
+  loop
+  muted
+  playsInline
+  src="https://storage.googleapis.com/yaw-assets/website/Superwall%20Demo.mp4"
+></video>
+
+#### Option 2: On Paywall Dismissal
+
+You can also trigger Encore when a user dismisses your Superwall paywall without converting:
+
+```swift
+import SuperwallKit
+import EncoreSDK
+
+// Listen to Superwall's paywall dismissal
+class SWDelegate: SuperwallDelegate {
+    func willDismissPaywall(withInfo paywallInfo: PaywallInfo) {
+        // User dismissed without purchasing
+        Encore.placement().show()
+    }
+}
+```
+
+This approach is ideal for presenting a last-chance retention offer when users close your paywall.
+
+> **💡 Tip:** The `Encore.placement().show()` method is the same fluent API shown in the [SwiftUI Builder API section](#swiftui-fluent-builder-api-recommended) above. You can chain optional callbacks like `.onResult()` if you need to handle the outcome.
+
+</Accordion>
+
+<Accordion title="RevenueCat Integration">
+
+If you're using RevenueCat for your paywalls, you can trigger Encore retention offers when users dismiss your paywall without purchasing. The implementation depends on which RevenueCat paywall presentation method you're using.
+
+#### Option 1: Using PaywallView
+
+If you're using RevenueCat's `PaywallView` component, use the `onRequestDismiss` callback to trigger Encore:
+
+```swift
+import RevenueCat
+import RevenueCatUI
+import EncoreSDK
+
+PaywallView(
+    placement: "your_placement",
+    params: [String: Any]?,
+    paywallOverrides: PaywallOverrides?,
+    onRequestDismiss: { paywallInfo, paywallResult in
+        // User dismissed without purchasing - trigger Encore
+        Encore.placement().show()
+    },
+    feature: (() -> Void)?
+)
+```
+
+#### Option 2: Using presentPaywallIfNeeded Modifier
+
+If you're using the `.presentPaywallIfNeeded` modifier, use the `onDismiss` callback:
+
+```swift
+import RevenueCat
+import RevenueCatUI
+import EncoreSDK
+
+YourView()
+    .presentPaywallIfNeeded(
+        presentationMode: {.fullScreen, .sheet, .default},
+        onDismiss: {
+            // User dismissed without purchasing - trigger Encore
+            Encore.placement().show()
+        }
+    )
+```
+
+Both approaches present a last-chance retention offer when users close your paywall without converting.
+
+> **💡 Tip:** Like the Superwall integration, you can reference the full [SwiftUI Builder API](#swiftui-fluent-builder-api-recommended) with optional callbacks to handle the outcome of the Encore offer.
+
+</Accordion>
 
 ---
 
@@ -266,5 +377,7 @@ case .failure(let error):
 
 ## Next Steps
 
-- [Tracking Entitlements State](./tracking-entitlements.mdx) - Monitor what entitlements users have
+- [Tracking Entitlements](./track-entitlements.mdx) - Monitor what entitlements users have
 - [User Management](./user-management.mdx) - Identify users and set attributes for personalized offers
+- [SuperWall Integration](./superwall-integration.mdx) - Combine with SuperWall for enhanced paywall experiences
+- [RevenueCat Integration](./revenuecat-integration.mdx) - Integrate with RevenueCat for comprehensive subscription management

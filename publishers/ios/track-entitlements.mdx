@@ -233,6 +233,101 @@ struct ProfileView: View {
 
 ---
 
+## Third-Party Paywall Integrations
+
+If you're using third-party paywall providers like Superwall or RevenueCat, you can combine their subscription status with Encore promotional rewards in your entitlement manager.
+
+<Accordion title="Superwall Integration">
+
+To track both Superwall subscriptions and Encore rewards, add `Superwall.shared.subscriptionStatus` to your `Publishers.CombineLatest`:
+
+```swift
+import Foundation
+import Encore
+import Combine
+import SuperwallKit
+
+@Observable
+class EntitlementManager {
+    var hasProAccess: Bool = false
+    private var cancellables = Set<AnyCancellable>()
+    
+    init() {
+        // Combine Superwall subscription status with Encore promotional rewards
+        Publishers.CombineLatest3(
+            Superwall.shared.subscriptionStatus,
+            Encore.shared.isActivePublisher(for: .freeTrial(), in: .verified),
+            yourIAPManager.subscriptionStatusPublisher  // Optional: your own IAP manager
+        )
+        .map { superwallActive, encoreActive, iapActive in
+            // User has pro access if they have an active subscription from ANY source
+            return superwallActive == .active || encoreActive || iapActive
+        }
+        .assign(to: \.hasProAccess, on: self)
+        .store(in: &cancellables)
+    }
+}
+```
+
+The `superwallActive` variable represents the Superwall subscription status and should be checked against `.active`.
+
+</Accordion>
+
+<Accordion title="RevenueCat Integration">
+
+To track both RevenueCat subscriptions and Encore rewards, create a publisher for RevenueCat's customer info and add it to your `Publishers.CombineLatest`:
+
+```swift
+import Foundation
+import Encore
+import Combine
+import RevenueCat
+
+@Observable
+class EntitlementManager {
+    var hasProAccess: Bool = false
+    private var cancellables = Set<AnyCancellable>()
+    private let revenueCatStatusSubject = CurrentValueSubject<Bool, Never>(false)
+    
+    init() {
+        setupRevenueCatListener()
+        
+        // Combine RevenueCat subscription status with Encore promotional rewards
+        Publishers.CombineLatest3(
+            revenueCatStatusSubject.eraseToAnyPublisher(),
+            Encore.shared.isActivePublisher(for: .freeTrial(), in: .verified),
+            yourIAPManager.subscriptionStatusPublisher 
+
+        )
+        .map { revenueCatActive, encoreActive, iapActive in
+            // User has pro access if they have an active subscription from ANY source
+            return revenueCatActive || encoreActive || iapActive
+        }
+        .assign(to: \.hasProAccess, on: self)
+        .store(in: &cancellables)
+    }
+    
+    private func setupRevenueCatListener() {
+        // Listen for RevenueCat customer info updates
+        Purchases.shared.getCustomerInfo { [weak self] customerInfo, error in
+            if let customerInfo = customerInfo {
+                // Check if user has any active entitlements
+                let hasActiveEntitlement = !customerInfo.entitlements.active.isEmpty
+                self?.revenueCatStatusSubject.send(hasActiveEntitlement)
+            }
+        }
+    }
+}
+```
+
+The RevenueCat status is determined by checking if `customerInfo.entitlements.active` is not empty, which indicates the user has at least one active entitlement.
+
+> **💡 Tip:** You can also implement `PurchasesDelegate` protocol to receive automatic updates when customer info changes, ensuring your entitlement status stays in sync.
+
+</Accordion>
+
+---
+
 ## Best Practices
 
 ### ✅ DO
@@ -264,5 +359,7 @@ let hasReward = Encore.shared.isActive(.freeTrial(), in: .verified)
 
 ## Next Steps
 
-- [Presenting Offers](./presenting-offers.mdx) - Show retention offers to users
+- [Presenting Offers](./present-offers.mdx) - Show retention offers to users
 - [User Management](./user-management.mdx) - Identify users, set attributes, and manage sessions
+- [SuperWall Integration](./superwall-integration.mdx) - Integrate with SuperWall for dynamic paywalls
+- [RevenueCat Integration](./revenuecat-integration.mdx) - Integrate with RevenueCat for subscription management
