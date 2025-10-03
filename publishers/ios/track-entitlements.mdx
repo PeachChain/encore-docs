@@ -296,7 +296,7 @@ class EntitlementManager {
         Publishers.CombineLatest3(
             revenueCatStatusSubject.eraseToAnyPublisher(),
             Encore.shared.isActivePublisher(for: .freeTrial(), in: .verified),
-            yourIAPManager.subscriptionStatusPublisher 
+            yourIAPManager.subscriptionStatusPublisher // Optional: your own IAP manager
 
         )
         .map { revenueCatActive, encoreActive, iapActive in
